@@ -2,6 +2,11 @@ plugins {
     id 'com.android.application'
 }
 
+// No CI, o número do build vem do GitHub Actions; localmente fica 0.
+def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '0').toInteger()
+// Assinatura de release: vem dos secrets do repositório (ver README). Sem eles, usa a chave de debug.
+def keystoreFile = System.getenv('KEYSTORE_FILE')
+
 android {
     namespace 'com.ranieri.cargabateria'
     compileSdk 34
@@ -10,8 +15,19 @@ android {
         applicationId 'com.ranieri.cargabateria'
         minSdk 21
         targetSdk 34
-        versionCode 1
-        versionName '1.0'
+        versionCode Math.max(buildNumber, 1)
+        versionName "1.0.${buildNumber}"
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreFile) {
+                storeFile file(keystoreFile)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
     }
 
     buildTypes {
@@ -19,8 +35,7 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
-            // Assinado com a chave de debug para poder instalar direto (sideload).
-            signingConfig signingConfigs.debug
+            signingConfig keystoreFile ? signingConfigs.release : signingConfigs.debug
         }
     }
 

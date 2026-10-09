@@ -8,8 +8,10 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.view.WindowManager;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.Locale;
 
@@ -27,7 +29,8 @@ public class MainActivity extends Activity {
     };
 
     private BatteryManager bm;
-    private TextView status, current, power, voltage, temp, level, eta;
+    private TextView status, current, power, scaleHint, voltage, temp, level, eta;
+    private CurrentScale scale;
 
     // A doc do Android diz microamperes, mas alguns aparelhos reportam miliamperes.
     // Uma vez que vemos um valor que só faz sentido em µA, fixamos essa unidade.
@@ -46,10 +49,20 @@ public class MainActivity extends Activity {
         status = findViewById(R.id.status);
         current = findViewById(R.id.current);
         power = findViewById(R.id.power);
+        scaleHint = findViewById(R.id.scale_hint);
         voltage = findViewById(R.id.voltage);
         temp = findViewById(R.id.temp);
         level = findViewById(R.id.level);
         eta = findViewById(R.id.eta);
+
+        scale = new CurrentScale(this);
+        // Ajuste manual caso a detecção automática erre.
+        current.setOnLongClickListener(v -> {
+            scale.toggleManual();
+            Toast.makeText(this, "Corrente ×" + scale.factor() + " (manual)", Toast.LENGTH_SHORT).show();
+            update();
+            return true;
+        });
     }
 
     @Override
@@ -62,6 +75,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         handler.removeCallbacks(tick);
+        scale.reset();
     }
 
     private void update() {
@@ -75,19 +89,24 @@ public class MainActivity extends Activity {
 
         int mv = b.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0);
         if (mv > 0 && mv < 100) mv *= 1000; // alguns aparelhos reportam em V
+        // Células em série reportam a tensão do conjunto (~8 V): detectável direto.
+        int cellsInSeries = mv > 6000 ? Math.round(mv / 4000f) : 1;
 
         int tempTenths = b.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Integer.MIN_VALUE);
         int lvl = b.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-        int scale = b.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
-        int pct = (lvl >= 0 && scale > 0) ? Math.round(lvl * 100f / scale) : -1;
+        int levelScale = b.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
+        int pct = (lvl >= 0 && levelScale > 0) ? Math.round(lvl * 100f / levelScale) : -1;
 
         int raw = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
         boolean hasCurrent = raw != Integer.MIN_VALUE && raw != 0;
+        int counter = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER);
         double ma = Double.NaN;
         if (hasCurrent) {
             if (Math.abs(raw) >= 15000) microAmps = true;
             // Sinal varia por fabricante; o sentido real vem do cabo conectado ou não.
-            ma = Math.abs(microAmps ? raw / 1000.0 : raw);
+            double rawMa = Math.abs(microAmps ? raw / 1000.0 : raw);
+            scale.sample(rawMa, counter, pct, isPlugged, SystemClock.elapsedRealtime());
+            ma = rawMa * scale.factor();
         }
 
         if (isPlugged != wasPlugged) avgMa = Double.NaN;
@@ -108,11 +127,25 @@ public class MainActivity extends Activity {
                     : "— W");
         }
 
-        voltage.setText(mv > 0 ? String.format(Locale.getDefault(), "%.2f V", mv / 1000.0) : "—");
+        if (mv <= 0) {
+            voltage.setText("—");
+        } else if (cellsInSeries > 1) {
+            voltage.setText(String.format(Locale.getDefault(), "%.2f V (%d × %.2f V)",
+                    mv / 1000.0, cellsInSeries, mv / 1000.0 / cellsInSeries));
+        } else {
+            voltage.setText(String.format(Locale.getDefault(), "%.2f V", mv / 1000.0));
+        }
+        scaleHint.setText(scaleHintText());
         temp.setText(tempTenths != Integer.MIN_VALUE
                 ? String.format(Locale.getDefault(), "%.1f °C", tempTenths / 10.0) : "—");
         level.setText(pct >= 0 ? pct + "%" : "—");
-        eta.setText(etaText(isPlugged, isFull, pct));
+        eta.setText(etaText(isPlugged, isFull, pct, counter));
+    }
+
+    private String scaleHintText() {
+        if (scale.factor() == 1) return scale.isManual() ? "corrente ×1 (manual)" : "";
+        if (scale.isManual()) return "célula dupla: corrente ×2 (manual)";
+        return scale.isConfirmed() ? "célula dupla: corrente ×2" : "célula dupla? corrente ×2 (verificando…)";
     }
 
     private String statusText(boolean isPlugged, boolean isFull, int plugged) {
@@ -128,7 +161,7 @@ public class MainActivity extends Activity {
         return src != null ? s + " · " + src : s;
     }
 
-    private String etaText(boolean isPlugged, boolean isFull, int pct) {
+    private String etaText(boolean isPlugged, boolean isFull, int pct, int counter) {
         if (isFull || pct >= 100) return isPlugged ? "Cheia" : "—";
         if (!isPlugged) return "—";
 
@@ -139,14 +172,9 @@ public class MainActivity extends Activity {
         }
 
         // Fallback: carga restante / corrente média.
-        int counter = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER);
-        if (counter <= 0 || counter == Integer.MIN_VALUE || pct <= 0
-                || Double.isNaN(avgMa) || avgMa < 1) {
-            return "—";
-        }
-        double counterMah = counter > 100_000 ? counter / 1000.0 : counter; // µAh ou mAh
-        double fullMah = counterMah * 100.0 / pct;
-        double minutes = (fullMah - counterMah) / avgMa * 60.0;
+        double fullMah = scale.fullCapacityMah(counter, pct);
+        if (fullMah <= 0 || pct <= 0 || Double.isNaN(avgMa) || avgMa < 1) return "—";
+        double minutes = fullMah * (100 - pct) / 100.0 / avgMa * 60.0;
         if (minutes <= 0 || minutes > 48 * 60) return "—";
         return "~" + formatDuration(Math.round(minutes));
     }

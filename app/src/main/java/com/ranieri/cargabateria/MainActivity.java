@@ -3,7 +3,6 @@ package com.ranieri.cargabateria;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.pm.PackageManager;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -55,12 +54,6 @@ public class MainActivity extends Activity {
         temp = findViewById(R.id.temp);
         level = findViewById(R.id.level);
         eta = findViewById(R.id.eta);
-
-        try {
-            String v = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-            ((TextView) findViewById(R.id.version)).setText("v" + v);
-        } catch (PackageManager.NameNotFoundException ignored) {
-        }
 
         scale = new CurrentScale(this);
         // Ajuste manual caso a detecção automática erre.

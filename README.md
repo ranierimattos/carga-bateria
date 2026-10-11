@@ -51,7 +51,7 @@ Sem chave configurada, o APK sai assinado com a chave de debug local.
 
 ### Publicação (mantenedor)
 
-O GitHub Actions compila a cada push. Pushes no branch principal (ou tags `v*`) publicam uma
+O GitHub Actions compila a cada push. Pushes no branch principal publicam uma
 release com `carga-bateria.apk`, **desde que** os secrets de assinatura estejam configurados
 (`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`). Sem eles, o build só gera
 um artefato de teste, para que nunca saia uma release assinada com chave aleatória

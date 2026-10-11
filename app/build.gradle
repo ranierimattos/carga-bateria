@@ -6,6 +6,11 @@ plugins {
 def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '0').toInteger()
 // Assinatura de release: vem dos secrets do repositório (ver README). Sem eles, usa a chave de debug.
 def keystoreFile = System.getenv('KEYSTORE_FILE')
+if (keystoreFile) {
+    ['KEYSTORE_PASSWORD', 'KEY_ALIAS', 'KEY_PASSWORD'].each {
+        if (!System.getenv(it)) throw new GradleException("Secret $it não configurado")
+    }
+}
 
 android {
     namespace 'com.ranieri.cargabateria'
@@ -17,6 +22,7 @@ android {
         targetSdk 34
         versionCode Math.max(buildNumber, 1)
         versionName "1.0.${buildNumber}"
+        resValue 'string', 'app_version', "v1.0.${buildNumber}"
     }
 
     signingConfigs {

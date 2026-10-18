@@ -3,6 +3,7 @@ name: Build APK
 # Todo push compila um APK (aba Actions). Push no branch principal também publica uma release.
 on:
   push:
+    paths-ignore: ['.github/workflows/cleanup.yml']
   workflow_dispatch:
 
 permissions:

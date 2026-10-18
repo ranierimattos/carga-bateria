@@ -44,12 +44,15 @@ jobs:
           name: carga-bateria
           path: carga-bateria.apk
 
+      # Sem a chave definitiva, publica como pré-release (assinatura provisória):
+      # não vira "latest" e quem instalar precisará desinstalar ao pegar uma versão definitiva.
       - name: Publish release
-        if: env.IS_MAIN == 'true' && env.KEYSTORE_FILE != ''
+        if: env.IS_MAIN == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Carga Bateria 1.0.${{ github.run_number }}
+          name: Carga Bateria 1.0.${{ github.run_number }}${{ env.KEYSTORE_FILE == '' && ' (assinatura provisória)' || '' }}
           target_commitish: ${{ github.sha }}
-          make_latest: true
+          prerelease: ${{ env.KEYSTORE_FILE == '' }}
+          make_latest: ${{ env.KEYSTORE_FILE != '' }}
           files: carga-bateria.apk

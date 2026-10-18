@@ -143,9 +143,9 @@ public class MainActivity extends Activity {
     }
 
     private String scaleHintText() {
-        if (scale.factor() == 1) return scale.isManual() ? "corrente ×1 (manual)" : "";
-        if (scale.isManual()) return "célula dupla: corrente ×2 (manual)";
-        return scale.isConfirmed() ? "célula dupla: corrente ×2" : "célula dupla? corrente ×2 (verificando…)";
+        String cell = scale.factor() == 2 ? "célula dupla (corrente ×2)" : "célula única";
+        if (scale.isManual()) return cell + " · manual";
+        return scale.isConfirmed() ? cell : "verificando tipo de bateria…";
     }
 
     private String statusText(boolean isPlugged, boolean isFull, int plugged) {

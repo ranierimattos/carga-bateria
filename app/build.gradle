@@ -4,13 +4,6 @@ plugins {
 
 // No CI, o número do build vem do GitHub Actions; localmente fica 0.
 def buildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '0').toInteger()
-// Assinatura de release: vem dos secrets do repositório (ver README). Sem eles, usa a chave de debug.
-def keystoreFile = System.getenv('KEYSTORE_FILE')
-if (keystoreFile) {
-    ['KEYSTORE_PASSWORD', 'KEY_ALIAS', 'KEY_PASSWORD'].each {
-        if (!System.getenv(it)) throw new GradleException("Secret $it não configurado")
-    }
-}
 
 android {
     namespace 'com.ranieri.cargabateria'
@@ -25,23 +18,14 @@ android {
         resValue 'string', 'app_version', "v1.0.${buildNumber}"
     }
 
-    signingConfigs {
-        release {
-            if (keystoreFile) {
-                storeFile file(keystoreFile)
-                storePassword System.getenv('KEYSTORE_PASSWORD')
-                keyAlias System.getenv('KEY_ALIAS')
-                keyPassword System.getenv('KEY_PASSWORD')
-            }
-        }
-    }
-
     buildTypes {
         release {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
-            signingConfig keystoreFile ? signingConfigs.release : signingConfigs.debug
+            // Assinado com a chave de debug do build (descartável): sem secrets para gerenciar.
+            // Consequência: para atualizar, é preciso desinstalar a versão anterior.
+            signingConfig signingConfigs.debug
         }
     }
 

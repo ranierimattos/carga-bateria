@@ -15,13 +15,12 @@ Também mostra tensão, temperatura, % da bateria e tempo estimado até 100%.
 
 Abra o link no celular, baixe e instale. O Android vai pedir para permitir
 "instalar apps desconhecidos" para o navegador ou gerenciador de arquivos.
-Para atualizar, basta instalar a versão nova por cima. A versão instalada aparece no rodapé do app.
+A versão instalada aparece no rodapé do app.
 
-Impressão digital do certificado de assinatura (SHA-256), para quem quiser conferir:
-
-```
-72:49:00:36:FE:E8:A3:0B:55:44:2D:F1:7B:16:78:F5:A9:21:C7:93:A2:78:40:07:D9:7D:ED:77:B0:1A:0C:72
-```
+**Para atualizar:** desinstale a versão anterior e instale a nova. Cada versão é assinada com
+uma chave descartável (assim o projeto não precisa guardar nenhuma chave secreta), e o Android
+não aceita instalar por cima de uma assinatura diferente. O app não guarda dados importantes,
+então nada se perde.
 
 ## Como funciona
 
@@ -47,15 +46,8 @@ Precisa de JDK 17 e Android SDK.
 ./gradlew assembleRelease
 ```
 
-Sem chave configurada, o APK sai assinado com a chave de debug local.
-
-### Publicação (mantenedor)
-
-O GitHub Actions compila a cada push. Pushes no branch principal publicam uma
-release com `carga-bateria.apk`, assinada com a chave dos secrets
-(`KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`). Sem eles, a release sai
-como pré-release com assinatura provisória (não vira a "última versão", porque uma chave
-aleatória impediria os usuários de atualizar).
+O GitHub Actions compila a cada push; pushes no branch principal publicam uma release com
+`carga-bateria.apk`.
 
 ## Licença
 

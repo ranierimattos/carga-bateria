@@ -34,6 +34,10 @@ então nada se perde.
     da bateria (contador de carga, ou variação de % × capacidade de projeto). Se a razão for ~2,
     passa a multiplicar a corrente por 2. Leva ~1–3 min de uso na primeira vez e fica salvo.
     Enquanto não confirma, mostra "verificando…".
+  - **Toque no tipo de bateria** (ex.: "célula única ↻") para refazer a identificação. Abre um
+    painel com a memória de cálculo ao vivo (as duas medidas, a razão e uma régua mostrando se ela
+    está na faixa de 1× ou 2×) e um botão para reportar erro, que abre uma issue já preenchida
+    no GitHub (com um comentário opcional).
   - Se errar, **toque e segure no número da corrente** para alternar ×1/×2 manualmente.
 - O tempo até 100% usa a estimativa do Android (9+); se indisponível, calcula pela corrente média
   (marcado com `~`).

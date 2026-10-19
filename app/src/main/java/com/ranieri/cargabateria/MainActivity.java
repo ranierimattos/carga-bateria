@@ -3,13 +3,18 @@ package com.ranieri.cargabateria;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.view.View;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -31,6 +36,14 @@ public class MainActivity extends Activity {
     private BatteryManager bm;
     private TextView status, current, power, scaleHint, voltage, temp, level, eta;
     private CurrentScale scale;
+    private View calcPanel;
+    private RatioGauge calcGauge;
+    private ProgressBar calcProgress;
+    private TextView calcLive;
+    private EditText calcComment;
+
+    // Última leitura, para o relatório de erro.
+    private int lastRaw = Integer.MIN_VALUE, lastCounter = Integer.MIN_VALUE, lastMv, lastPct = -1;
 
     // A doc do Android diz microamperes, mas alguns aparelhos reportam miliamperes.
     // Uma vez que vemos um valor que só faz sentido em µA, fixamos essa unidade.
@@ -63,6 +76,26 @@ public class MainActivity extends Activity {
             update();
             return true;
         });
+
+        calcPanel = findViewById(R.id.calc_panel);
+        calcGauge = findViewById(R.id.calc_gauge);
+        calcProgress = findViewById(R.id.calc_progress);
+        calcLive = findViewById(R.id.calc_live);
+        calcComment = findViewById(R.id.calc_comment);
+
+        // Tocar no tipo de bateria refaz a identificação e mostra a memória de cálculo.
+        scaleHint.setOnClickListener(v -> {
+            scale.restart();
+            calcPanel.setVisibility(View.VISIBLE);
+            Toast.makeText(this, "Identificação reiniciada", Toast.LENGTH_SHORT).show();
+            update();
+        });
+        findViewById(R.id.calc_close).setOnClickListener(v -> {
+            calcPanel.setVisibility(View.GONE);
+            ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE))
+                    .hideSoftInputFromWindow(v.getWindowToken(), 0);
+        });
+        findViewById(R.id.calc_report).setOnClickListener(v -> report());
     }
 
     @Override
@@ -75,7 +108,7 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         handler.removeCallbacks(tick);
-        scale.reset();
+        scale.pause();
     }
 
     private void update() {
@@ -100,6 +133,10 @@ public class MainActivity extends Activity {
         int raw = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
         boolean hasCurrent = raw != Integer.MIN_VALUE && raw != 0;
         int counter = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER);
+        lastRaw = raw;
+        lastCounter = counter;
+        lastMv = mv;
+        lastPct = pct;
         double ma = Double.NaN;
         if (hasCurrent) {
             if (Math.abs(raw) >= 15000) microAmps = true;
@@ -140,12 +177,80 @@ public class MainActivity extends Activity {
                 ? String.format(Locale.getDefault(), "%.1f °C", tempTenths / 10.0) : "—");
         level.setText(pct >= 0 ? pct + "%" : "—");
         eta.setText(etaText(isPlugged, isFull, pct, counter));
+        if (calcPanel.getVisibility() == View.VISIBLE) updateCalcPanel();
     }
 
     private String scaleHintText() {
+        return resultText() + "  ↻";
+    }
+
+    private String resultText() {
         String cell = scale.factor() == 2 ? "célula dupla (corrente ×2)" : "célula única";
         if (scale.isManual()) return cell + " · manual";
         return scale.isConfirmed() ? cell : "verificando tipo de bateria…";
+    }
+
+    private void updateCalcPanel() {
+        double live = scale.liveRatio();
+        calcGauge.setRatio(Double.isNaN(live) ? scale.lastRatio() : live);
+        double min = scale.minDeltaMah();
+        calcProgress.setProgress(min > 0 ? (int) Math.min(100, scale.deltaMah() * 100 / min) : 0);
+        calcLive.setText(calcText());
+    }
+
+    /** Memória de cálculo em texto (usada na tela e no relatório). */
+    private String calcText() {
+        Locale l = Locale.getDefault();
+        StringBuilder sb = new StringBuilder();
+        if (scale.isManual()) {
+            sb.append("Modo manual: medição automática desligada.\n");
+        } else if (!scale.isMeasuring()) {
+            sb.append(scale.designMah() > 0 || lastCounter > 0
+                    ? "Aguardando o início da medição…\n"
+                    : "Sem contador de carga nem capacidade conhecida: não dá para medir.\n");
+        } else {
+            String src = scale.usesCounter()
+                    ? "contador de carga" + (scale.counterScale() == 2 ? " (×2, escala de 1 célula)" : "")
+                    : String.format(l, "%% × capacidade (%.0f mAh)", scale.designMah());
+            sb.append("B vem de: ").append(src).append('\n');
+            sb.append(String.format(l, "A (corrente × tempo): %6.1f mAh%n", scale.integratedMah()));
+            sb.append(String.format(l, "B (carga real):       %6.1f mAh%n", scale.deltaMah()));
+            sb.append(String.format(l, "Conclui com B ≥ %.0f mAh%n", scale.minDeltaMah()));
+            double r = scale.liveRatio();
+            sb.append("Razão B ÷ A agora:    ")
+                    .append(Double.isNaN(r) ? "—" : String.format(l, "%.2f", r)).append('\n');
+        }
+        if (!Double.isNaN(scale.lastRatio())) {
+            sb.append(String.format(l, "Última razão medida:  %.2f%n", scale.lastRatio()));
+        }
+        sb.append("Resultado: ").append(resultText());
+        return sb.toString();
+    }
+
+    /** Abre uma issue no GitHub já preenchida com os dados do cálculo. */
+    private void report() {
+        String comment = calcComment.getText().toString().trim();
+        Locale l = Locale.ROOT;
+        String body = "**Comentário:** " + (comment.isEmpty() ? "(nenhum)" : comment) + "\n\n"
+                + "**Aparelho:** " + Build.MANUFACTURER + " " + Build.MODEL
+                + " (Android " + Build.VERSION.RELEASE + ", API " + Build.VERSION.SDK_INT + ")\n"
+                + "**App:** " + getString(R.string.app_version) + "\n\n"
+                + "```\n" + calcText() + "\n\n"
+                + "corrente bruta: " + lastRaw + "\n"
+                + "contador bruto: " + lastCounter + "\n"
+                + "tensão: " + lastMv + " mV\n"
+                + "nível: " + lastPct + "%\n"
+                + String.format(l, "capacidade de projeto: %.0f mAh%n", scale.designMah())
+                + "```\n";
+        Uri uri = Uri.parse("https://github.com/ranierimattos/carga-bateria/issues/new").buildUpon()
+                .appendQueryParameter("title", "Tipo de bateria incorreto: " + Build.MANUFACTURER + " " + Build.MODEL)
+                .appendQueryParameter("body", body)
+                .build();
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, uri));
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(this, "Nenhum navegador encontrado", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private String statusText(boolean isPlugged, boolean isFull, int plugged) {

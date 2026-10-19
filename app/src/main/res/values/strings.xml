@@ -5,4 +5,9 @@
     <string name="temperature">Temperatura</string>
     <string name="level">Bateria</string>
     <string name="eta">Até 100%</string>
+    <string name="calc_title">Como o tipo de bateria é identificado</string>
+    <string name="calc_how">Alguns celulares de célula dupla informam só metade da corrente. Para descobrir, o app compara duas medidas da mesma carga:\n\n• A: carga calculada pela corrente informada (corrente × tempo)\n• B: carga que de fato entrou ou saiu da bateria (contador de carga do Android, ou % × capacidade)\n\nRazão B ÷ A perto de 1 → célula única. Perto de 2 → célula dupla, e a corrente é multiplicada por 2.\n\nMantenha o app aberto: a medição recomeça se ele for fechado.</string>
+    <string name="calc_comment_hint">Comentário (opcional), ex.: meu celular é de célula dupla</string>
+    <string name="calc_close">Fechar</string>
+    <string name="calc_report">Reportar erro</string>
 </resources>

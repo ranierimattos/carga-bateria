@@ -17,6 +17,7 @@ final class CurrentScale {
     private static final String KEY_FACTOR = "factor";
     private static final String KEY_STATE = "state";
     private static final int STATE_GUESS = 0, STATE_AUTO = 1, STATE_MANUAL = 2;
+    static final double SINGLE_MIN = 0.7, SINGLE_MAX = 1.35, DUAL_MIN = 1.6, DUAL_MAX = 2.6;
 
     private final SharedPreferences prefs;
     /** Capacidade de projeto em mAh (0 se desconhecida). */
@@ -33,6 +34,12 @@ final class CurrentScale {
     private double startTruthMah;
     private double integratedMah;
     private long lastSampleMs;
+
+    // Valores da janela atual, para exibir a memória de cálculo.
+    private double liveDeltaMah;
+    private double liveMinDeltaMah;
+    /** Razão da última medição concluída (NaN se nenhuma). */
+    private double lastRatio = Double.NaN;
 
     CurrentScale(Context context) {
         prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -62,8 +69,59 @@ final class CurrentScale {
     }
 
     /** Interrompe a janela atual (ex.: app pausado, já que não integramos em segundo plano). */
-    void reset() {
+    void pause() {
         windowOpen = false;
+    }
+
+    /** Esquece o resultado salvo (inclusive o manual) e identifica de novo do zero. */
+    void restart() {
+        factor = 1;
+        state = STATE_GUESS;
+        windowOpen = false;
+        lastRatio = Double.NaN;
+        save();
+    }
+
+    // --- Memória de cálculo (só leitura, para a tela de detalhes e o relatório) ---
+
+    double designMah() {
+        return designMah;
+    }
+
+    boolean isMeasuring() {
+        return windowOpen;
+    }
+
+    boolean usesCounter() {
+        return windowUsesCounter;
+    }
+
+    int counterScale() {
+        return counterScale;
+    }
+
+    /** Carga calculada pela corrente reportada (∫ I·dt) na janela atual, em mAh. */
+    double integratedMah() {
+        return windowOpen ? integratedMah : 0;
+    }
+
+    /** Carga que realmente entrou/saiu da bateria na janela atual, em mAh. */
+    double deltaMah() {
+        return windowOpen ? liveDeltaMah : 0;
+    }
+
+    /** Variação mínima de carga para concluir a medição, em mAh. */
+    double minDeltaMah() {
+        return liveMinDeltaMah;
+    }
+
+    /** Razão parcial da janela atual (NaN se ainda sem dados). */
+    double liveRatio() {
+        return windowOpen && integratedMah > 0.5 ? liveDeltaMah / integratedMah : Double.NaN;
+    }
+
+    double lastRatio() {
+        return lastRatio;
     }
 
     /**
@@ -99,14 +157,17 @@ final class CurrentScale {
         }
 
         double delta = Math.abs(truthMah - startTruthMah);
+        liveDeltaMah = delta;
+        liveMinDeltaMah = minDelta;
         if (delta < minDelta || integratedMah < 5) return;
 
         double ratio = delta / integratedMah;
-        if (ratio > 1.6 && ratio < 2.6) {
+        lastRatio = ratio;
+        if (ratio > DUAL_MIN && ratio < DUAL_MAX) {
             factor = 2;
             state = STATE_AUTO;
             save();
-        } else if (ratio > 0.7 && ratio < 1.35) {
+        } else if (ratio > SINGLE_MIN && ratio < SINGLE_MAX) {
             factor = 1;
             state = STATE_AUTO;
             save();
@@ -119,6 +180,8 @@ final class CurrentScale {
         windowPlugged = plugged;
         lastSampleMs = nowMs;
         integratedMah = 0;
+        liveDeltaMah = 0;
+        liveMinDeltaMah = hasCounter || designMah <= 0 ? 40 : Math.max(40, designMah * 0.04);
 
         if (hasCounter) {
             // Se o contador indica ~metade da capacidade de projeto, ele também
